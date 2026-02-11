@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 14, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/abdur/Downloads/django-project-with-google-auth/RAG-Django-app/app/page.tsx"],"sourcesContent":["import Navbar from \"@/components/Navbar\"\r\nimport Hero from \"@/components/Hero\"\r\n\r\nexport default function Home() {\r\n  return (\r\n    <main className=\"min-h-screen bg-black text-white relative overflow-hidden\">\r\n      <Navbar />\r\n      <Hero />\r\n    </main>\r\n  )\r\n}\r\n"],"names":[],"mappings":";;;;;;;;;;;;;;;;;;AAGe,SAAS;IACtB,qBACE,sQAAC;QAAK,WAAU;;0BACd,sQAAC;;;;;0BACD,sQAAC;;;;;;;;;;;AAGP"}}]
-}
