@@ -1,11 +1,18 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/db.sqlite3
+backend/*.pyc
 
-# Virtual environments
-.venv
+# Environment files
 .env
+backend/.env
+frontend/rag-frontend/.env.local
+
+# Node
+frontend/rag-frontend/node_modules/
+frontend/rag-frontend/.next/
+
+# OS
+.DS_Store
+Thumbs.db

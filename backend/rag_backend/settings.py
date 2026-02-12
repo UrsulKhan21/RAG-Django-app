@@ -2,7 +2,10 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+
 load_dotenv()
+
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,6 +33,15 @@ INSTALLED_APPS = [
     "accounts",
     "sources",
     "chat",
+    'django.contrib.sites',
+    'rest_framework.authtoken',
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    
 ]
 
 # =========================================================
@@ -45,6 +57,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
+
 ]
 
 ROOT_URLCONF = "rag_backend.urls"
@@ -67,6 +81,13 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "rag_backend.wsgi.application"
 
+
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+    }
+}
 # =========================================================
 # DATABASE
 # =========================================================
@@ -138,22 +159,28 @@ LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 # =========================================================
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "accounts.authentication.CsrfExemptSessionAuthentication",
-    ],
-    "DEFAULT_PERMISSION_CLASSES": [
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "accounts.authentication.CookieJWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
-    ],
+    ),
 }
+DEBUG=True
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 # =========================================================
 # INTERNATIONALIZATION
 # =========================================================
+  # for development only
 
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
+SITE_ID = 1
 
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

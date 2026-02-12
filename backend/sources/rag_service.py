@@ -52,18 +52,6 @@ def get_qdrant_client() -> QdrantClient:
 # =========================================================
 
 def fetch_api_data(api_url: str, api_key: str = "", headers: dict = None, data_path: str = "") -> list[dict]:
-    """
-    Fetch data from any REST API.
-    
-    Args:
-        api_url: The URL to fetch data from
-        api_key: Optional API key (added as Authorization: Bearer header)
-        headers: Optional additional headers
-        data_path: Dot-separated path to the array of items (e.g., 'products' or 'data.items')
-    
-    Returns:
-        List of dictionaries
-    """
     request_headers = headers or {}
     if api_key:
         request_headers["Authorization"] = f"Bearer {api_key}"
@@ -73,7 +61,7 @@ def fetch_api_data(api_url: str, api_key: str = "", headers: dict = None, data_p
 
     data = response.json()
 
-    # Navigate to the data path
+    # Navigate JSON path
     if data_path:
         for key in data_path.split("."):
             key = key.strip()
@@ -82,7 +70,7 @@ def fetch_api_data(api_url: str, api_key: str = "", headers: dict = None, data_p
             else:
                 raise ValueError(f"Path '{data_path}' not found in API response")
 
-    # Ensure we have a list
+    # Ensure list
     if isinstance(data, dict):
         data = [data]
 
@@ -97,14 +85,12 @@ def fetch_api_data(api_url: str, api_key: str = "", headers: dict = None, data_p
 # =========================================================
 
 def normalize_item(item: dict, index: int) -> dict:
-    """Convert any dict item into a text chunk for embedding."""
-    # Create a readable text representation of all fields
     lines = []
     for key, value in item.items():
         if isinstance(value, (list, dict)):
             value = json.dumps(value, ensure_ascii=False)
         lines.append(f"{key}: {value}")
-    
+
     text = "\n".join(lines)
     item_id = str(item.get("id", index))
     item_hash = hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()
@@ -121,23 +107,11 @@ def normalize_item(item: dict, index: int) -> dict:
 # =========================================================
 
 def ingest_source(source) -> int:
-    """
-    Full ingest pipeline for an ApiSource:
-    1. Fetch data from API
-    2. Normalize items into text chunks
-    3. Generate embeddings
-    4. Store in Qdrant
-    
-    Returns the number of documents ingested.
-    """
-    from .models import ApiSource
-
     source.status = "ingesting"
     source.error_message = ""
     source.save()
 
     try:
-        # 1. Fetch data
         items = fetch_api_data(
             api_url=source.api_url,
             api_key=source.api_key,
@@ -152,11 +126,9 @@ def ingest_source(source) -> int:
             source.save()
             return 0
 
-        # 2. Normalize
         normalized = [normalize_item(item, i) for i, item in enumerate(items)]
         texts = [obj["text"] for obj in normalized]
 
-        # 3. Generate embeddings
         embedder = get_embedder()
         vectors = embedder.encode(
             texts,
@@ -165,12 +137,14 @@ def ingest_source(source) -> int:
             show_progress_bar=False,
         )
 
-        # 4. Store in Qdrant
         client = get_qdrant_client()
         collection_name = source.collection_name
 
-        # Create or recreate collection
-        if client.collection_exists(collection_name):
+        # Check if collection exists
+        collections = client.get_collections().collections
+        collection_names = [c.name for c in collections]
+
+        if collection_name in collection_names:
             client.delete_collection(collection_name)
 
         client.create_collection(
@@ -181,7 +155,6 @@ def ingest_source(source) -> int:
             ),
         )
 
-        # Generate stable IDs
         ids = [
             str(uuid5(NAMESPACE_URL, f"{source.id}:{obj['id']}"))
             for obj in normalized
@@ -203,13 +176,11 @@ def ingest_source(source) -> int:
             for i in range(len(ids))
         ]
 
-        # Batch upsert (100 at a time)
         batch_size = 100
         for i in range(0, len(points), batch_size):
             batch = points[i : i + batch_size]
             client.upsert(collection_name=collection_name, points=batch)
 
-        # Update source
         source.status = "ready"
         source.document_count = len(items)
         source.last_synced = timezone.now()
@@ -229,11 +200,6 @@ def ingest_source(source) -> int:
 # =========================================================
 
 def search_source(source, query: str, top_k: int = 5) -> dict:
-    """
-    Search the vector store for a source.
-    
-    Returns dict with 'contexts' and 'sources'.
-    """
     embedder = get_embedder()
     query_vector = embedder.encode(
         [query],
@@ -244,7 +210,11 @@ def search_source(source, query: str, top_k: int = 5) -> dict:
     client = get_qdrant_client()
     collection_name = source.collection_name
 
-    if not client.collection_exists(collection_name):
+    # Check collection exists
+    collections = client.get_collections().collections
+    collection_names = [c.name for c in collections]
+
+    if collection_name not in collection_names:
         return {"contexts": [], "sources": []}
 
     results = client.search(
@@ -275,9 +245,6 @@ def search_source(source, query: str, top_k: int = 5) -> dict:
 # =========================================================
 
 def query_llm(question: str, contexts: list[str]) -> str:
-    """
-    Query the LLM (Groq) with context from vector search.
-    """
     from openai import OpenAI
 
     if not contexts:

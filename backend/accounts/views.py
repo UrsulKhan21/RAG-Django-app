@@ -1,4 +1,5 @@
 import os
+from urllib import response
 import requests
 from urllib.parse import urlencode
 
@@ -12,6 +13,8 @@ from django.views import View
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.http import HttpResponseRedirect
 
 from .models import GoogleProfile
 
@@ -107,9 +110,30 @@ class GoogleCallbackView(View):
                 refresh_token=refresh_token,
             )
 
-        login(request, user)
+        refresh = RefreshToken.for_user(user)
 
-        return redirect(f"{settings.FRONTEND_URL}/dashboard")
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = HttpResponseRedirect(f"{settings.FRONTEND_URL}/dashboard")
+
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=False,  # True in production (HTTPS)
+            samesite="Lax",
+        )
+
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=False,
+            samesite="Lax",
+        )
+
+        return response
 
 
 @api_view(["GET"])
@@ -134,8 +158,9 @@ def current_user(request):
 
 
 @api_view(["POST"])
-@permission_classes([AllowAny])
 def logout_view(request):
-    """Log out the current user."""
-    logout(request)
-    return Response({"status": "ok"})
+    response = Response({"status": "ok"})
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    return response
+
