@@ -7,3 +7,4 @@ sentence-transformers>=3.0
 qdrant-client>=1.9
 openai>=1.30
 torch>=2.0
+pypdf>=4.0

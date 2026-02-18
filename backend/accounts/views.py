@@ -1,12 +1,9 @@
-import os
-from urllib import response
 import requests
 from urllib.parse import urlencode
 
 from django.conf import settings
-from django.contrib.auth import login, logout
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views import View
 
@@ -14,6 +11,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import status
 from django.http import HttpResponseRedirect
 
 from .models import GoogleProfile
@@ -22,6 +20,7 @@ from .models import GoogleProfile
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 
 class GoogleLoginView(View):
@@ -117,23 +116,124 @@ class GoogleCallbackView(View):
 
         response = HttpResponseRedirect(f"{settings.FRONTEND_URL}/dashboard")
 
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            secure=False,  # True in production (HTTPS)
-            samesite="Lax",
-        )
-
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=False,
-            samesite="Lax",
-        )
+        set_auth_cookies(response, access_token, refresh_token)
 
         return response
+
+
+def set_auth_cookies(response, access_token, refresh_token):
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,  # True in production (HTTPS)
+        samesite="Lax",
+        max_age=COOKIE_MAX_AGE,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=False,
+        samesite="Lax",
+        max_age=COOKIE_MAX_AGE,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def register_view(request):
+    email = (request.data.get("email") or "").strip().lower()
+    password = request.data.get("password") or ""
+    name = (request.data.get("name") or "").strip()
+
+    if not email or not password:
+        return Response(
+            {"detail": "Email and password are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if User.objects.filter(email=email).exists():
+        return Response(
+            {"detail": "An account with this email already exists."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    first_name = name.split(" ")[0] if name else ""
+    last_name = " ".join(name.split(" ")[1:]) if name and len(name.split(" ")) > 1 else ""
+
+    user = User.objects.create_user(
+        username=email,
+        email=email,
+        password=password,
+        first_name=first_name,
+        last_name=last_name,
+    )
+
+    refresh = RefreshToken.for_user(user)
+    response = Response(
+        {
+            "id": str(user.id),
+            "email": user.email,
+            "name": user.get_full_name() or user.username,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+    set_auth_cookies(response, str(refresh.access_token), str(refresh))
+    return response
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def email_login_view(request):
+    email = (request.data.get("email") or "").strip().lower()
+    password = request.data.get("password") or ""
+
+    user = authenticate(request, username=email, password=password)
+    if user is None:
+        return Response(
+            {"detail": "Invalid email or password."},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    refresh = RefreshToken.for_user(user)
+    response = Response(
+        {
+            "id": str(user.id),
+            "email": user.email,
+            "name": user.get_full_name() or user.username,
+        }
+    )
+    set_auth_cookies(response, str(refresh.access_token), str(refresh))
+    return response
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def refresh_view(request):
+    token = request.COOKIES.get("refresh_token")
+    if not token:
+        return Response({"detail": "No refresh token."}, status=status.HTTP_401_UNAUTHORIZED)
+
+    try:
+        refresh = RefreshToken(token)
+        access_token = str(refresh.access_token)
+    except Exception:
+        response = Response({"detail": "Invalid refresh token."}, status=status.HTTP_401_UNAUTHORIZED)
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+        return response
+
+    response = Response({"status": "ok"})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,
+        samesite="Lax",
+        max_age=COOKIE_MAX_AGE,
+    )
+    return response
 
 
 @api_view(["GET"])
@@ -158,6 +258,7 @@ def current_user(request):
 
 
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def logout_view(request):
     response = Response({"status": "ok"})
     response.delete_cookie("access_token")

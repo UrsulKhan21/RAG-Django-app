@@ -5,6 +5,7 @@ RAG Service: Handles fetching API data, embedding, and storing in Qdrant.
 import hashlib
 import json
 import requests
+import re
 from uuid import uuid5, NAMESPACE_URL
 
 from django.conf import settings
@@ -13,6 +14,7 @@ from django.utils import timezone
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
+from pypdf import PdfReader
 
 
 # =========================================================
@@ -102,6 +104,42 @@ def normalize_item(item: dict, index: int) -> dict:
     }
 
 
+def normalize_pdf_chunks(pdf_path: str) -> list[dict]:
+    reader = PdfReader(pdf_path)
+    normalized = []
+
+    for page_index, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            continue
+
+        chunk_size = 1200
+        overlap = 200
+        start = 0
+        chunk_idx = 0
+
+        while start < len(text):
+            end = min(start + chunk_size, len(text))
+            chunk_text = text[start:end].strip()
+            if chunk_text:
+                chunk_idx += 1
+                chunk_id = f"page_{page_index}_chunk_{chunk_idx}"
+                chunk_hash = hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()
+                normalized.append(
+                    {
+                        "id": chunk_id,
+                        "text": f"Page {page_index}: {chunk_text}",
+                        "hash": chunk_hash,
+                    }
+                )
+            if end == len(text):
+                break
+            start = max(end - overlap, 0)
+
+    return normalized
+
+
 # =========================================================
 # INGEST PIPELINE
 # =========================================================
@@ -112,21 +150,26 @@ def ingest_source(source) -> int:
     source.save()
 
     try:
-        items = fetch_api_data(
-            api_url=source.api_url,
-            api_key=source.api_key,
-            headers=source.headers,
-            data_path=source.data_path,
-        )
+        if source.source_type == "pdf":
+            if not source.pdf_file:
+                raise ValueError("PDF source has no file attached.")
+            normalized = normalize_pdf_chunks(source.pdf_file.path)
+        else:
+            items = fetch_api_data(
+                api_url=source.api_url,
+                api_key=source.api_key,
+                headers=source.headers,
+                data_path=source.data_path,
+            )
+            normalized = [normalize_item(item, i) for i, item in enumerate(items)]
 
-        if not items:
+        if not normalized:
             source.status = "ready"
             source.document_count = 0
             source.last_synced = timezone.now()
             source.save()
             return 0
 
-        normalized = [normalize_item(item, i) for i, item in enumerate(items)]
         texts = [obj["text"] for obj in normalized]
 
         embedder = get_embedder()
@@ -165,6 +208,7 @@ def ingest_source(source) -> int:
                 "text": obj["text"],
                 "source_id": source.id,
                 "source_name": source.name,
+                "source_type": source.source_type,
                 "raw_id": obj["id"],
                 "hash": obj["hash"],
             }
@@ -182,11 +226,11 @@ def ingest_source(source) -> int:
             client.upsert(collection_name=collection_name, points=batch)
 
         source.status = "ready"
-        source.document_count = len(items)
+        source.document_count = len(normalized)
         source.last_synced = timezone.now()
         source.save()
 
-        return len(items)
+        return len(normalized)
 
     except Exception as e:
         source.status = "error"
@@ -244,11 +288,33 @@ def search_source(source, query: str, top_k: int = 5) -> dict:
 # LLM QUERY
 # =========================================================
 
-def query_llm(question: str, contexts: list[str]) -> str:
+def query_llm(question: str, contexts: list[str], agent_role: str = "") -> str:
     from openai import OpenAI
 
+    role_block = agent_role.strip() if agent_role else (
+        "You are a helpful assistant that answers questions using only the provided context."
+    )
+
+    structure_block = (
+        "Return the answer in this markdown structure:\n"
+        "## Answer\n"
+        "- 2 to 5 concise bullet points with direct answer.\n"
+        "## Key Facts from Data\n"
+        "- Bullet list of concrete facts found in context.\n"
+        "## Sources Used\n"
+        "- Short bullet list of evidence snippets.\n"
+        "If data is missing, say it clearly in '## Answer' and keep other sections brief."
+    )
+
     if not contexts:
-        return "No relevant data found in the knowledge base."
+        return (
+            "## Answer\n"
+            "- I could not find relevant information in your indexed data.\n"
+            "## Key Facts from Data\n"
+            "- No matching context was retrieved.\n"
+            "## Sources Used\n"
+            "- None"
+        )
 
     context_block = "\n\n".join(f"- {c}" for c in contexts)
 
@@ -263,9 +329,10 @@ def query_llm(question: str, contexts: list[str]) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful assistant that answers questions ONLY using "
-                    "the provided context. If the answer is not in the context, "
-                    "say you don't know. Be clear and concise."
+                    f"{role_block}\n\n"
+                    "You must answer ONLY using provided context. "
+                    "If answer is not in context, explicitly say you do not know.\n\n"
+                    f"{structure_block}"
                 ),
             },
             {
