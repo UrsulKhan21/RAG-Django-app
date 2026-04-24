@@ -180,11 +180,12 @@ GOOGLE_REDIRECT_URI = os.getenv(
 # =========================================================
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
-EMBED_DIM = 384
+EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "gemini-embedding-001")
+EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
 
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 

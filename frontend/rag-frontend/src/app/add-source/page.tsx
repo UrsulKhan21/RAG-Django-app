@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import AppHeader from "@/components/app-header";
 
 function getCookie(name: string) {
@@ -142,8 +142,12 @@ export default function AddSourcePage() {
       });
       setPdfFile(null);
       loadSources();
-    } catch {
-      setError("Failed to create source.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      setError(err instanceof Error && err.message ? err.message : "Failed to create source.");
     }
 
     setLoading(false);
@@ -160,8 +164,8 @@ export default function AddSourcePage() {
         },
       });
       setSources((prev) => prev.filter((source) => source.id !== id));
-    } catch {
-      setError("Failed to delete source.");
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : "Failed to delete source.");
     }
   }
 

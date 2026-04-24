@@ -4,6 +4,7 @@ RAG Service: Handles fetching API data, embedding, and storing in Qdrant.
 
 import hashlib
 import json
+import math
 import requests
 import re
 from uuid import uuid5, NAMESPACE_URL
@@ -18,7 +19,7 @@ from pypdf import PdfReader
 
 
 # =========================================================
-# SINGLETON EMBEDDER
+# SINGLETON EMBEDDER CLIENT
 # =========================================================
 
 _embedder = None
@@ -27,12 +28,48 @@ _embedder = None
 def get_embedder() -> Any:
     global _embedder
     if _embedder is None:
-        # Import lazily so the Django web process can boot on low-memory instances.
-        from sentence_transformers import SentenceTransformer
+        from google import genai
 
-        _embedder = SentenceTransformer(settings.EMBED_MODEL_NAME)
-        _embedder.encode(["warmup"], show_progress_bar=False)
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is not set.")
+
+        _embedder = genai.Client(api_key=settings.GEMINI_API_KEY)
     return _embedder
+
+
+def normalize_vector(values: list[float]) -> list[float]:
+    magnitude = math.sqrt(sum(value * value for value in values))
+    if magnitude == 0:
+        return values
+    return [value / magnitude for value in values]
+
+
+def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
+    if not texts:
+        return []
+
+    from google.genai import types
+
+    client = get_embedder()
+    vectors: list[list[float]] = []
+    batch_size = 16
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        response = client.models.embed_content(
+            model=settings.EMBED_MODEL_NAME,
+            contents=batch,
+            config=types.EmbedContentConfig(
+                task_type=task_type,
+                output_dimensionality=settings.EMBED_DIM,
+            ),
+        )
+        vectors.extend(
+            normalize_vector(list(embedding.values))
+            for embedding in response.embeddings
+        )
+
+    return vectors
 
 
 # =========================================================
@@ -175,13 +212,7 @@ def ingest_source(source) -> int:
 
         texts = [obj["text"] for obj in normalized]
 
-        embedder = get_embedder()
-        vectors = embedder.encode(
-            texts,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
+        vectors = embed_texts(texts, task_type="RETRIEVAL_DOCUMENT")
 
         client = get_qdrant_client()
         collection_name = source.collection_name
@@ -219,7 +250,7 @@ def ingest_source(source) -> int:
         ]
 
         points = [
-            PointStruct(id=ids[i], vector=vectors[i].tolist(), payload=payloads[i])
+            PointStruct(id=ids[i], vector=vectors[i], payload=payloads[i])
             for i in range(len(ids))
         ]
 
@@ -247,12 +278,7 @@ def ingest_source(source) -> int:
 # =========================================================
 
 def search_source(source, query: str, top_k: int = 5) -> dict:
-    embedder = get_embedder()
-    query_vector = embedder.encode(
-        [query],
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    )[0].tolist()
+    query_vector = embed_texts([query], task_type="RETRIEVAL_QUERY")[0]
 
     client = get_qdrant_client()
     collection_name = source.collection_name
