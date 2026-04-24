@@ -1,10 +1,22 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { getApiBaseUrl } from "./runtime-config";
 
 let refreshPromise: Promise<boolean> | null = null;
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function refreshAccessToken() {
+  const apiUrl = getApiBaseUrl();
+
   if (!refreshPromise) {
-    refreshPromise = fetch(`${API_URL}/api/auth/refresh/`, {
+    refreshPromise = fetch(`${apiUrl}/api/auth/refresh/`, {
       method: "POST",
       credentials: "include",
     })
@@ -23,6 +35,7 @@ export async function apiFetch(
   options: RequestInit = {},
   retryOnAuthError = true
 ) {
+  const apiUrl = getApiBaseUrl();
   const headers = new Headers(options.headers || {});
   const isFormDataBody =
     typeof FormData !== "undefined" && options.body instanceof FormData;
@@ -31,7 +44,7 @@ export async function apiFetch(
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  const res = await fetch(`${apiUrl}${endpoint}`, {
     ...options,
     credentials: "include",
     headers,
@@ -48,7 +61,19 @@ export async function apiFetch(
         return apiFetch(endpoint, options, false);
       }
     }
-    throw new Error("API Error");
+
+    let message = "API Error";
+
+    try {
+      const data = await res.json();
+      if (typeof data?.detail === "string" && data.detail.trim()) {
+        message = data.detail;
+      } else if (typeof data?.error === "string" && data.error.trim()) {
+        message = data.error;
+      }
+    } catch {}
+
+    throw new ApiError(message, res.status);
   }
 
   if (res.status === 204) {

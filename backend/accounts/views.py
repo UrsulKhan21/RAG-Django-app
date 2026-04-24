@@ -1,13 +1,16 @@
 import requests
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.core import signing
 from django.shortcuts import redirect
+from django.urls import reverse
 from django.views import View
 
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -15,6 +18,7 @@ from rest_framework import status
 from django.http import HttpResponseRedirect
 
 from .models import GoogleProfile
+from rag_backend.throttles import LoginRateThrottle, RefreshRateThrottle, RegisterRateThrottle
 
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -23,17 +27,65 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 
+def normalize_origin(value: str) -> str:
+    parts = urlsplit((value or "").strip())
+    if not parts.scheme or not parts.netloc:
+        return ""
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def get_safe_frontend_origin(candidate: str) -> str:
+    origin = normalize_origin(candidate)
+    allowed_origins = set(getattr(settings, "FRONTEND_URLS", [settings.FRONTEND_URL]))
+    return origin if origin in allowed_origins else settings.FRONTEND_URL
+
+
+def get_frontend_origin_from_request(request) -> str:
+    frontend_origin = request.GET.get("frontend_origin", "")
+    if not frontend_origin:
+        frontend_origin = request.META.get("HTTP_REFERER", "")
+    return get_safe_frontend_origin(frontend_origin)
+
+
+def get_frontend_origin_from_state(state: str) -> str:
+    if not state:
+        return settings.FRONTEND_URL
+
+    try:
+        payload = signing.loads(state, max_age=600)
+    except signing.BadSignature:
+        return settings.FRONTEND_URL
+
+    return get_safe_frontend_origin(payload.get("frontend_origin", ""))
+
+
+def build_google_redirect_uri(request) -> str:
+    return request.build_absolute_uri(reverse("google-callback"))
+
+
+def find_user_by_email_password(email: str, password: str):
+    candidates = User.objects.filter(email=email).order_by("id")
+
+    for candidate in candidates:
+        if candidate.check_password(password):
+            return candidate
+
+    return None
+
+
 class GoogleLoginView(View):
     """Redirect user to Google OAuth consent screen."""
 
     def get(self, request):
+        frontend_origin = get_frontend_origin_from_request(request)
         params = {
             "client_id": settings.GOOGLE_CLIENT_ID,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "redirect_uri": build_google_redirect_uri(request),
             "response_type": "code",
             "scope": "openid email profile",
             "access_type": "offline",
             "prompt": "consent",
+            "state": signing.dumps({"frontend_origin": frontend_origin}),
         }
         url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
         return redirect(url)
@@ -45,23 +97,24 @@ class GoogleCallbackView(View):
     def get(self, request):
         code = request.GET.get("code")
         error = request.GET.get("error")
+        frontend_origin = get_frontend_origin_from_state(request.GET.get("state", ""))
 
         if error or not code:
-            return redirect(f"{settings.FRONTEND_URL}?error=auth_failed")
+            return redirect(f"{frontend_origin}/login?error=auth_failed")
 
         # Exchange code for tokens
         token_data = {
             "code": code,
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "redirect_uri": build_google_redirect_uri(request),
             "grant_type": "authorization_code",
         }
 
         token_response = requests.post(GOOGLE_TOKEN_URL, data=token_data)
 
         if not token_response.ok:
-            return redirect(f"{settings.FRONTEND_URL}?error=token_failed")
+            return redirect(f"{frontend_origin}/login?error=token_failed")
 
         tokens = token_response.json()
         access_token = tokens.get("access_token", "")
@@ -72,7 +125,7 @@ class GoogleCallbackView(View):
         userinfo_response = requests.get(GOOGLE_USERINFO_URL, headers=headers)
 
         if not userinfo_response.ok:
-            return redirect(f"{settings.FRONTEND_URL}?error=userinfo_failed")
+            return redirect(f"{frontend_origin}/login?error=userinfo_failed")
 
         userinfo = userinfo_response.json()
         google_id = userinfo.get("id", "")
@@ -114,7 +167,7 @@ class GoogleCallbackView(View):
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
 
-        response = HttpResponseRedirect(f"{settings.FRONTEND_URL}/dashboard")
+        response = HttpResponseRedirect(f"{frontend_origin}/dashboard")
 
         set_auth_cookies(response, access_token, refresh_token)
 
@@ -126,22 +179,25 @@ def set_auth_cookies(response, access_token, refresh_token):
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,  # True in production (HTTPS)
-        samesite="Lax",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
         max_age=COOKIE_MAX_AGE,
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite="Lax",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
         max_age=COOKIE_MAX_AGE,
     )
 
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([RegisterRateThrottle])
 def register_view(request):
     email = (request.data.get("email") or "").strip().lower()
     password = request.data.get("password") or ""
@@ -153,9 +209,16 @@ def register_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if User.objects.filter(email=email).exists():
+    existing_users = User.objects.filter(email=email)
+    if existing_users.exists():
+        has_password_account = any(user.has_usable_password() for user in existing_users)
+        detail = (
+            "An account with this email already exists. Please log in instead."
+            if has_password_account
+            else "This email is already linked to a Google account. Please use Google login."
+        )
         return Response(
-            {"detail": "An account with this email already exists."},
+            {"detail": detail},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -185,14 +248,22 @@ def register_view(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([LoginRateThrottle])
 def email_login_view(request):
     email = (request.data.get("email") or "").strip().lower()
     password = request.data.get("password") or ""
 
     user = authenticate(request, username=email, password=password)
     if user is None:
+        user = find_user_by_email_password(email, password)
+
+    if user is None:
+        existing_users = User.objects.filter(email=email)
+        detail = "Invalid email or password."
+        if existing_users.exists() and not any(user.has_usable_password() for user in existing_users):
+            detail = "This email is linked to Google login only. Please continue with Google."
         return Response(
-            {"detail": "Invalid email or password."},
+            {"detail": detail},
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
@@ -210,6 +281,7 @@ def email_login_view(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([RefreshRateThrottle])
 def refresh_view(request):
     token = request.COOKIES.get("refresh_token")
     if not token:
@@ -229,8 +301,9 @@ def refresh_view(request):
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
-        samesite="Lax",
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
         max_age=COOKIE_MAX_AGE,
     )
     return response
@@ -261,7 +334,15 @@ def current_user(request):
 @permission_classes([AllowAny])
 def logout_view(request):
     response = Response({"status": "ok"})
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(
+        "access_token",
+        domain=settings.COOKIE_DOMAIN,
+        samesite=settings.COOKIE_SAMESITE,
+    )
+    response.delete_cookie(
+        "refresh_token",
+        domain=settings.COOKIE_DOMAIN,
+        samesite=settings.COOKIE_SAMESITE,
+    )
     return response
 

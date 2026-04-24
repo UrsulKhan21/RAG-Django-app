@@ -22,7 +22,15 @@ class ApiSourceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "status", "document_count", "error_message", "last_synced", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "status",
+            "document_count",
+            "error_message",
+            "last_synced",
+            "created_at",
+            "updated_at",
+        ]
 
     def validate(self, attrs):
         source_type = attrs.get(

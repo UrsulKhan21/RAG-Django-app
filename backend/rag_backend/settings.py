@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from datetime import timedelta
+import dj_database_url
 from dotenv import load_dotenv
 
 
@@ -10,11 +11,25 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def parse_csv_env(name: str, default: str) -> list[str]:
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
+def get_bool_env(name: str, default: bool) -> bool:
+    return os.getenv(name, str(default)).strip().lower() == "true"
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "change-me-in-production")
 
-DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+DEBUG = get_bool_env("DEBUG", True)
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+if not DEBUG and SECRET_KEY == "change-me-in-production":
+    raise ValueError("Set DJANGO_SECRET_KEY in production.")
+
+ALLOWED_HOSTS = parse_csv_env("ALLOWED_HOSTS", "localhost,127.0.0.1")
+if DEBUG:
+    # Local-network testing is much easier if Django accepts requests from the laptop IP too.
+    ALLOWED_HOSTS = ["*"]
 
 # =========================================================
 # INSTALLED APPS
@@ -52,6 +67,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -93,12 +109,23 @@ SOCIALACCOUNT_PROVIDERS = {
 # DATABASE
 # =========================================================
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "60")),
+            ssl_require=os.getenv("DB_SSL_REQUIRE", "True").lower() == "true",
+        )
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 # =========================================================
 # AUTH
@@ -115,21 +142,27 @@ AUTH_PASSWORD_VALIDATORS = [
 # CORS (for Next.js frontend)
 # =========================================================
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_URLS = parse_csv_env("FRONTEND_URLS", os.getenv("FRONTEND_URL", "http://localhost:3000"))
+FRONTEND_URL = FRONTEND_URLS[0]
 
-CORS_ALLOWED_ORIGINS = [
-    FRONTEND_URL,
-]
+CORS_ALLOWED_ORIGINS = FRONTEND_URLS
 
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [
-    FRONTEND_URL,
-]
+CSRF_TRUSTED_ORIGINS = FRONTEND_URLS
 
-SESSION_COOKIE_SAMESITE = "Lax"
+COOKIE_SECURE = get_bool_env("COOKIE_SECURE", not DEBUG)
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "Lax")
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "").strip() or None
+
+SESSION_COOKIE_SECURE = COOKIE_SECURE
+SESSION_COOKIE_SAMESITE = COOKIE_SAMESITE
+SESSION_COOKIE_DOMAIN = COOKIE_DOMAIN
 SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = COOKIE_SECURE
+CSRF_COOKIE_SAMESITE = COOKIE_SAMESITE
+CSRF_COOKIE_DOMAIN = COOKIE_DOMAIN
+CSRF_COOKIE_HTTPONLY = False
 
 # =========================================================
 # Google OAuth
@@ -166,6 +199,20 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rag_backend.throttles.BurstAnonThrottle",
+        "rag_backend.throttles.BurstUserThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": os.getenv("THROTTLE_ANON_RATE", "60/minute"),
+        "user": os.getenv("THROTTLE_USER_RATE", "300/minute"),
+        "login": os.getenv("THROTTLE_LOGIN_RATE", "10/minute"),
+        "register": os.getenv("THROTTLE_REGISTER_RATE", "5/hour"),
+        "refresh": os.getenv("THROTTLE_REFRESH_RATE", "30/minute"),
+        "chat_query": os.getenv("THROTTLE_CHAT_QUERY_RATE", "30/minute"),
+        "source_write": os.getenv("THROTTLE_SOURCE_WRITE_RATE", "20/hour"),
+    },
 }
 
 SIMPLE_JWT = {
@@ -173,10 +220,17 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
 }
 
-DEBUG=True
 if not DEBUG:
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = get_bool_env("SECURE_SSL_REDIRECT", True)
+    SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = get_bool_env("SECURE_HSTS_INCLUDE_SUBDOMAINS", True)
+    SECURE_HSTS_PRELOAD = get_bool_env("SECURE_HSTS_PRELOAD", False)
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+    SECURE_REFERRER_POLICY = "same-origin"
+    USE_X_FORWARDED_HOST = True
+    SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 
 # =========================================================
 # INTERNATIONALIZATION
@@ -189,7 +243,9 @@ USE_I18N = True
 USE_TZ = True
 SITE_ID = 1
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

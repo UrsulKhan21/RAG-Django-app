@@ -13,6 +13,7 @@ frontend/rag-frontend/.env.local
 # Node
 frontend/rag-frontend/node_modules/
 frontend/rag-frontend/.next/
+frontend/rag-frontend/.open-next/
 
 # OS
 .DS_Store

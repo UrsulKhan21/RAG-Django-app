@@ -1,5 +1,6 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -8,6 +9,7 @@ from rest_framework.decorators import parser_classes
 from .models import ApiSource
 from .serializers import ApiSourceSerializer
 from .rag_service import ingest_source, get_qdrant_client
+from rag_backend.throttles import SourceWriteRateThrottle
 
 
 # =========================================================
@@ -17,6 +19,7 @@ from .rag_service import ingest_source, get_qdrant_client
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
+@throttle_classes([SourceWriteRateThrottle])
 def source_list(request):
     """List all sources or create a new one."""
 
@@ -94,6 +97,7 @@ def source_detail(request, pk):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([SourceWriteRateThrottle])
 def source_ingest(request, pk):
     """Trigger ingestion pipeline."""
 
@@ -125,6 +129,7 @@ def source_ingest(request, pk):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([SourceWriteRateThrottle])
 def source_sync(request, pk):
     """Re-run ingestion pipeline."""
 

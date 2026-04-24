@@ -1,26 +1,10 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="min-h-screen w-full">
-        <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 md:px-8">
-          <a href="/" className="text-xl font-semibold tracking-tight">
-            AI<span className="text-sky-400">Knowledge</span>
-          </a>
-          <nav className="hidden items-center gap-8 text-sm text-slate-300 md:flex">
-            <a href="/" className="text-sky-400">Home</a>
-            <a href="#about" className="hover:text-white">About</a>
-            <a href="#tools" className="hover:text-white">Tools</a>
-            <a href="#connect" className="hover:text-white">Connect</a>
-          </nav>
-          <a
-            href="/login"
-            className="rounded-full border border-slate-700 bg-slate-900/70 px-5 py-2.5 text-sm font-medium text-slate-100 transition hover:border-sky-400 hover:text-sky-300"
-          >
-            Sign up
-          </a>
-        </header>
-
-        <section className="mx-auto grid w-full max-w-7xl gap-8 px-5 pb-8 pt-4 md:px-8 md:pb-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+        <section className="mx-auto grid w-full max-w-7xl gap-8 px-5 pb-8 pt-10 md:px-8 md:pb-10 md:pt-14 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div className="animate-float-up">
             <p className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1.5 text-xs text-slate-300">
               <span className="h-2 w-2 rounded-full bg-sky-400" />
@@ -39,18 +23,18 @@ export default function Home() {
             </p>
 
             <div className="mt-7 flex flex-wrap gap-3">
-              <a
+              <Link
                 href="/login"
                 className="rounded-xl bg-sky-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-sky-600"
               >
                 Get Started
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/dashboard"
                 className="rounded-xl border border-slate-700 bg-slate-900 px-6 py-3 text-sm font-semibold text-slate-100 transition hover:border-sky-400 hover:text-sky-300"
               >
                 Open Dashboard
-              </a>
+              </Link>
             </div>
           </div>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import AppHeader from "@/components/app-header";
 
 function getCookie(name: string) {
   if (typeof document === "undefined") return null;
@@ -59,6 +60,9 @@ export default function AddSourcePage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
+  const readySources = sources.filter((source) => source.status === "ready");
+  const headerChatHref =
+    readySources[0] ? `/chat/${readySources[0].id}` : sources[0] ? `/chat/${sources[0].id}` : null;
 
   const csrfToken = getCookie("csrftoken");
 
@@ -162,8 +166,9 @@ export default function AddSourcePage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 p-6 text-slate-100 md:p-8">
-      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <AppHeader chatHref={headerChatHref} />
+      <div className="mx-auto grid max-w-6xl gap-6 p-6 md:p-8 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_14px_40px_-20px_rgba(2,6,23,0.9)]">
           <p className="text-xs font-mono uppercase tracking-[0.16em] text-slate-400">
             Source Setup

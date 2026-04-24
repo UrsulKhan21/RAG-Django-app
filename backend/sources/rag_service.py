@@ -261,12 +261,21 @@ def search_source(source, query: str, top_k: int = 5) -> dict:
     if collection_name not in collection_names:
         return {"contexts": [], "sources": []}
 
-    results = client.search(
-        collection_name=collection_name,
-        query_vector=query_vector,
-        limit=top_k,
-        with_payload=True,
-    )
+    if hasattr(client, "query_points"):
+        response = client.query_points(
+            collection_name=collection_name,
+            query=query_vector,
+            limit=top_k,
+            with_payload=True,
+        )
+        results = response.points
+    else:
+        results = client.search(
+            collection_name=collection_name,
+            query_vector=query_vector,
+            limit=top_k,
+            with_payload=True,
+        )
 
     contexts = []
     sources_set = set()
@@ -288,7 +297,12 @@ def search_source(source, query: str, top_k: int = 5) -> dict:
 # LLM QUERY
 # =========================================================
 
-def query_llm(question: str, contexts: list[str], agent_role: str = "") -> str:
+def query_llm(
+    question: str,
+    contexts: list[str],
+    agent_role: str = "",
+    history: list[dict] | None = None,
+) -> str:
     from openai import OpenAI
 
     role_block = agent_role.strip() if agent_role else (
@@ -317,6 +331,22 @@ def query_llm(question: str, contexts: list[str], agent_role: str = "") -> str:
         )
 
     context_block = "\n\n".join(f"- {c}" for c in contexts)
+    history = history or []
+    history_block = "\n".join(
+        f"{msg['role'].capitalize()}: {msg['content']}"
+        for msg in history
+        if msg.get("content")
+    )
+
+    user_prompt_parts = []
+    if history_block:
+        user_prompt_parts.append(
+            "Recent conversation history from this same chat session:\n"
+            f"{history_block}"
+        )
+    user_prompt_parts.append(f"Context:\n{context_block}")
+    user_prompt_parts.append(f"Question: {question}")
+    user_prompt = "\n\n".join(user_prompt_parts)
 
     client = OpenAI(
         api_key=settings.GROQ_API_KEY,
@@ -331,13 +361,15 @@ def query_llm(question: str, contexts: list[str], agent_role: str = "") -> str:
                 "content": (
                     f"{role_block}\n\n"
                     "You must answer ONLY using provided context. "
+                    "Use recent conversation history only to resolve references such as pronouns, ellipsis, and follow-up questions. "
+                    "Never treat chat history as factual evidence unless the same point is supported by the provided context. "
                     "If answer is not in context, explicitly say you do not know.\n\n"
                     f"{structure_block}"
                 ),
             },
             {
                 "role": "user",
-                "content": f"Context:\n{context_block}\n\nQuestion: {question}",
+                "content": user_prompt,
             },
         ],
         temperature=0.2,

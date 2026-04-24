@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/runtime-config";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -16,11 +17,17 @@ export default function LoginPage() {
       .then(() => {
         window.location.href = "/dashboard";
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!(err instanceof ApiError) || err.status !== 401) {
+          setError("Unable to verify login right now. Please try again.");
+        }
+      });
   }, []);
 
   const handleGoogleLogin = () => {
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/google/login/`;
+    const apiUrl = getApiBaseUrl();
+    const frontendOrigin = encodeURIComponent(window.location.origin);
+    window.location.href = `${apiUrl}/api/auth/google/login/?frontend_origin=${frontendOrigin}`;
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -49,12 +56,12 @@ export default function LoginPage() {
       }
 
       window.location.href = "/dashboard";
-    } catch {
-      setError(
+    } catch (err) {
+      const fallbackMessage =
         mode === "signup"
           ? "Unable to create account. Please check your details."
-          : "Invalid email or password."
-      );
+          : "Invalid email or password.";
+      setError(err instanceof Error && err.message ? err.message : fallbackMessage);
     } finally {
       setLoading(false);
     }

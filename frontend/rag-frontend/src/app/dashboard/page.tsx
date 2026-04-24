@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
+import AppHeader from "@/components/app-header";
 
 interface Source {
   id: number;
@@ -13,12 +15,20 @@ interface Source {
 export default function Dashboard() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     apiFetch("/api/sources/")
-      .then((data) => setSources(data))
-      .catch(() => {
-        window.location.href = "/login";
+      .then((data) => {
+        setSources(data);
+        setError("");
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
+        setError("Unable to load dashboard right now. Please refresh and try again.");
       })
       .finally(() => {
         setLoading(false);
@@ -30,10 +40,13 @@ export default function Dashboard() {
     (sum, source) => sum + source.document_count,
     0
   );
+  const headerChatHref =
+    readySources[0] ? `/chat/${readySources[0].id}` : sources[0] ? `/chat/${sources[0].id}` : null;
 
   return (
-    <main className="min-h-screen bg-slate-950 p-6 text-slate-100 md:p-8">
-      <div className="mx-auto max-w-6xl space-y-8">
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <AppHeader chatHref={headerChatHref} />
+      <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
         <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_14px_40px_-20px_rgba(2,6,23,0.9)]">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div>
@@ -48,12 +61,12 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex gap-3">
-              <a
+              <Link
                 href="/add-source"
                 className="rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-600"
               >
                 Add Source
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -86,6 +99,12 @@ export default function Dashboard() {
         </section>
 
         <section className="space-y-3">
+          {error && (
+            <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
           {loading && (
             <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-5 text-sm text-slate-300">
               Loading sources...
@@ -123,12 +142,12 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
-                <a
+                <Link
                   href={`/chat/${source.id}`}
                   className="inline-flex items-center justify-center rounded-xl border border-slate-600 bg-slate-950 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:border-sky-400 hover:text-sky-300"
                 >
                   Open Chat
-                </a>
+                </Link>
               </div>
             </article>
           ))}

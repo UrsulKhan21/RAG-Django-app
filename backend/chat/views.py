@@ -1,5 +1,6 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -7,6 +8,10 @@ from .models import ChatSession, ChatMessage
 from .serializers import ChatSessionSerializer, ChatMessageSerializer
 from sources.models import ApiSource
 from sources.rag_service import search_source, query_llm
+from rag_backend.throttles import ChatQueryRateThrottle
+
+HISTORY_QUESTION_LIMIT = 5
+HISTORY_MESSAGE_LIMIT = 10
 
 
 # =========================================================
@@ -112,6 +117,7 @@ def session_messages(request, pk):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ChatQueryRateThrottle])
 def session_query(request, pk):
     """Send a question and receive AI response."""
 
@@ -132,7 +138,7 @@ def session_query(request, pk):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Save user message
+    # Save the latest user message before retrieval so follow-ups can use it.
     ChatMessage.objects.create(
         session=session,
         role="user",
@@ -141,20 +147,37 @@ def session_query(request, pk):
 
     try:
         source = session.api_source
+        recent_messages = list(
+            session.messages.order_by("-created_at")[: HISTORY_MESSAGE_LIMIT + 1]
+        )
+        recent_messages.reverse()
 
-        # 🔍 Search vector DB
-        results = search_source(source, question, top_k=top_k)
+        history_messages = [
+            {"role": message.role, "content": message.content}
+            for message in recent_messages[:-1]
+        ]
+        recent_user_questions = [
+            message.content.strip()
+            for message in recent_messages
+            if message.role == "user" and message.content.strip()
+        ][-HISTORY_QUESTION_LIMIT:]
 
+        retrieval_query = "\n".join(recent_user_questions) if recent_user_questions else question
+
+        results = search_source(source, retrieval_query, top_k=top_k)
         contexts = results.get("contexts", [])
         sources_used = results.get("sources", [])
 
         if not contexts:
             answer = "I couldn't find relevant information in your indexed data."
         else:
-            # 🤖 Query LLM
-            answer = query_llm(question, contexts, agent_role=source.agent_role)
+            answer = query_llm(
+                question,
+                contexts,
+                agent_role=source.agent_role,
+                history=history_messages,
+            )
 
-        # Save assistant message
         assistant_msg = ChatMessage.objects.create(
             session=session,
             role="assistant",
@@ -162,7 +185,6 @@ def session_query(request, pk):
             sources=sources_used,
         )
 
-        # Update title on first user message
         if session.messages.filter(role="user").count() == 1:
             session.title = question[:100]
             session.save()

@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import AppHeader from "@/components/app-header";
 
 interface Message {
   id?: number;
@@ -112,26 +114,27 @@ export default function ChatPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 p-4 text-slate-100 md:p-6">
-      <div className="mx-auto grid max-w-7xl gap-4 md:gap-6 lg:grid-cols-[280px_1fr]">
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <AppHeader chatHref={sourceId ? `/chat/${sourceId}` : null} />
+      <div className="mx-auto grid max-w-7xl gap-4 p-4 md:gap-6 md:p-6 lg:grid-cols-[280px_1fr]">
         <aside className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-[0_14px_40px_-20px_rgba(2,6,23,0.9)] md:p-5 lg:h-[calc(100vh-3rem)] lg:sticky lg:top-6">
           <div className="flex items-center justify-between">
             <p className="text-xs font-mono uppercase tracking-[0.16em] text-slate-400">
               Sources
             </p>
-            <a
+            <Link
               href="/dashboard"
               className="text-xs font-medium text-slate-300 hover:text-sky-300"
             >
               Dashboard
-            </a>
+            </Link>
           </div>
 
           <div className="mt-4 space-y-2 overflow-y-auto lg:max-h-[calc(100vh-11rem)]">
             {sources.map((source) => {
               const isActive = String(source.id) === sourceId;
               return (
-                <a
+                <Link
                   key={source.id}
                   href={`/chat/${source.id}`}
                   className={`block rounded-xl border px-3 py-2.5 transition ${
@@ -144,7 +147,7 @@ export default function ChatPage() {
                   <p className="mt-1 text-xs text-slate-300">
                     {source.status} - {source.document_count} docs
                   </p>
-                </a>
+                </Link>
               );
             })}
 
