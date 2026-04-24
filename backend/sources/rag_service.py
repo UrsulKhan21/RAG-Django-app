@@ -7,11 +7,11 @@ import json
 import requests
 import re
 from uuid import uuid5, NAMESPACE_URL
+from typing import Any
 
 from django.conf import settings
 from django.utils import timezone
 
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 from pypdf import PdfReader
@@ -24,9 +24,12 @@ from pypdf import PdfReader
 _embedder = None
 
 
-def get_embedder() -> SentenceTransformer:
+def get_embedder() -> Any:
     global _embedder
     if _embedder is None:
+        # Import lazily so the Django web process can boot on low-memory instances.
+        from sentence_transformers import SentenceTransformer
+
         _embedder = SentenceTransformer(settings.EMBED_MODEL_NAME)
         _embedder.encode(["warmup"], show_progress_bar=False)
     return _embedder
