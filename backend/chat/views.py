@@ -1,6 +1,7 @@
 import logging
 
 from rest_framework import status
+from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import throttle_classes
 from rest_framework.permissions import IsAuthenticated
@@ -135,7 +136,8 @@ def session_query(request, pk):
         )
 
     question = request.data.get("question", "").strip()
-    top_k = int(request.data.get("top_k", 5))
+    top_k = int(request.data.get("top_k", settings.RAG_MAX_TOP_K))
+    top_k = max(1, min(top_k, settings.RAG_MAX_TOP_K))
 
     if not question:
         return Response(

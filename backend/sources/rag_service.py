@@ -288,6 +288,7 @@ def ingest_source(source) -> int:
 # =========================================================
 
 def search_source(source, query: str, top_k: int = 5) -> dict:
+    top_k = max(1, min(top_k, settings.RAG_MAX_TOP_K))
     query_vector = embed_texts([query], task_type="RETRIEVAL_QUERY")[0]
 
     client = get_qdrant_client()
@@ -336,6 +337,55 @@ def search_source(source, query: str, top_k: int = 5) -> dict:
 # LLM QUERY
 # =========================================================
 
+def trim_text(value: str, max_chars: int) -> str:
+    value = re.sub(r"\s+", " ", value or "").strip()
+    if len(value) <= max_chars:
+        return value
+    return value[:max_chars].rsplit(" ", 1)[0].strip()
+
+
+def build_context_block(contexts: list[str]) -> str:
+    max_total = settings.LLM_MAX_CONTEXT_CHARS
+    max_chunk = settings.LLM_MAX_CONTEXT_CHARS_PER_CHUNK
+    remaining = max_total
+    trimmed_contexts = []
+
+    for context in contexts:
+        if remaining <= 0:
+            break
+
+        chunk = trim_text(context, min(max_chunk, remaining))
+        if not chunk:
+            continue
+
+        trimmed_contexts.append(f"- {chunk}")
+        remaining -= len(chunk)
+
+    return "\n\n".join(trimmed_contexts)
+
+
+def build_history_block(history: list[dict]) -> str:
+    max_total = settings.LLM_MAX_HISTORY_CHARS
+    remaining = max_total
+    lines = []
+
+    for msg in reversed(history):
+        content = trim_text(msg.get("content", ""), remaining)
+        if not content:
+            continue
+
+        role = msg.get("role", "message").capitalize()
+        line = f"{role}: {content}"
+        lines.append(line)
+        remaining -= len(line)
+
+        if remaining <= 0:
+            break
+
+    lines.reverse()
+    return "\n".join(lines)
+
+
 def query_llm(
     question: str,
     contexts: list[str],
@@ -369,13 +419,9 @@ def query_llm(
             "- None"
         )
 
-    context_block = "\n\n".join(f"- {c}" for c in contexts)
+    context_block = build_context_block(contexts)
     history = history or []
-    history_block = "\n".join(
-        f"{msg['role'].capitalize()}: {msg['content']}"
-        for msg in history
-        if msg.get("content")
-    )
+    history_block = build_history_block(history)
 
     user_prompt_parts = []
     if history_block:

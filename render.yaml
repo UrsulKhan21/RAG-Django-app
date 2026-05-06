@@ -27,3 +27,13 @@ services:
         value: "120/minute"
       - key: THROTTLE_SOURCE_WRITE_RATE
         value: "100/hour"
+      - key: LLM_MAX_TOKENS
+        value: "768"
+      - key: LLM_MAX_CONTEXT_CHARS
+        value: "6500"
+      - key: LLM_MAX_CONTEXT_CHARS_PER_CHUNK
+        value: "1400"
+      - key: LLM_MAX_HISTORY_CHARS
+        value: "1200"
+      - key: RAG_MAX_TOP_K
+        value: "4"
