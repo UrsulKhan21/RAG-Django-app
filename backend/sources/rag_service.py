@@ -7,6 +7,7 @@ import json
 import math
 import requests
 import re
+import time
 from uuid import uuid5, NAMESPACE_URL
 from typing import Any
 
@@ -52,18 +53,27 @@ def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
 
     client = get_embedder()
     vectors: list[list[float]] = []
-    batch_size = 16
+    batch_size = max(1, settings.EMBED_BATCH_SIZE)
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
-        response = client.models.embed_content(
-            model=settings.EMBED_MODEL_NAME,
-            contents=batch,
-            config=types.EmbedContentConfig(
-                task_type=task_type,
-                output_dimensionality=settings.EMBED_DIM,
-            ),
-        )
+        response = None
+        for attempt in range(3):
+            try:
+                response = client.models.embed_content(
+                    model=settings.EMBED_MODEL_NAME,
+                    contents=batch,
+                    config=types.EmbedContentConfig(
+                        task_type=task_type,
+                        output_dimensionality=settings.EMBED_DIM,
+                    ),
+                )
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(2 * (attempt + 1))
+
         vectors.extend(
             normalize_vector(list(embedding.values))
             for embedding in response.embeddings
@@ -268,7 +278,7 @@ def ingest_source(source) -> int:
 
     except Exception as e:
         source.status = "error"
-        source.error_message = str(e)[:500]
+        source.error_message = "Indexing failed. Please retry or use a smaller source."
         source.save()
         raise
 
@@ -402,7 +412,7 @@ def query_llm(
             },
         ],
         temperature=0.2,
-        max_tokens=1024,
+        max_tokens=settings.LLM_MAX_TOKENS,
     )
 
     return response.choices[0].message.content.strip()

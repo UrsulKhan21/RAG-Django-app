@@ -3,6 +3,8 @@ from .models import ApiSource
 
 
 class ApiSourceSerializer(serializers.ModelSerializer):
+    error_message = serializers.SerializerMethodField()
+
     class Meta:
         model = ApiSource
         fields = [
@@ -31,6 +33,11 @@ class ApiSourceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_error_message(self, obj):
+        if obj.error_message:
+            return "Indexing failed. Please retry or use a smaller source."
+        return ""
 
     def validate(self, attrs):
         source_type = attrs.get(

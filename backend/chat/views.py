@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import throttle_classes
@@ -12,6 +14,9 @@ from rag_backend.throttles import ChatQueryRateThrottle
 
 HISTORY_QUESTION_LIMIT = 5
 HISTORY_MESSAGE_LIMIT = 10
+GENERIC_CHAT_ERROR = "I could not complete that answer right now. Please try again in a moment."
+
+logger = logging.getLogger(__name__)
 
 
 # =========================================================
@@ -192,13 +197,13 @@ def session_query(request, pk):
         serializer = ChatMessageSerializer(assistant_msg)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    except Exception as e:
-        error_message = f"Error: {str(e)}"
+    except Exception:
+        logger.exception("Failed to answer chat session %s for user %s", session.id, request.user.id)
 
         error_msg = ChatMessage.objects.create(
             session=session,
             role="assistant",
-            content=error_message,
+            content=GENERIC_CHAT_ERROR,
         )
 
         serializer = ChatMessageSerializer(error_msg)

@@ -152,7 +152,7 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = FRONTEND_URLS
 
 COOKIE_SECURE = get_bool_env("COOKIE_SECURE", not DEBUG)
-COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "Lax")
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "Lax" if DEBUG else "None")
 COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "").strip() or None
 
 SESSION_COOKIE_SECURE = COOKIE_SECURE
@@ -188,6 +188,11 @@ EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "gemini-embedding-001")
 EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
 
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2048"))
+EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "8"))
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(100 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(100 * 1024 * 1024)))
 
 # =========================================================
 # REST FRAMEWORK
@@ -206,14 +211,15 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.ScopedRateThrottle",
     ),
     "DEFAULT_THROTTLE_RATES": {
-        "anon": os.getenv("THROTTLE_ANON_RATE", "60/minute"),
-        "user": os.getenv("THROTTLE_USER_RATE", "300/minute"),
+        "anon": os.getenv("THROTTLE_ANON_RATE", "120/minute"),
+        "user": os.getenv("THROTTLE_USER_RATE", "600/minute"),
         "login": os.getenv("THROTTLE_LOGIN_RATE", "10/minute"),
         "register": os.getenv("THROTTLE_REGISTER_RATE", "5/hour"),
         "refresh": os.getenv("THROTTLE_REFRESH_RATE", "30/minute"),
-        "chat_query": os.getenv("THROTTLE_CHAT_QUERY_RATE", "30/minute"),
-        "source_write": os.getenv("THROTTLE_SOURCE_WRITE_RATE", "20/hour"),
+        "chat_query": os.getenv("THROTTLE_CHAT_QUERY_RATE", "120/minute"),
+        "source_write": os.getenv("THROTTLE_SOURCE_WRITE_RATE", "100/hour"),
     },
+    "EXCEPTION_HANDLER": "rag_backend.exceptions.safe_exception_handler",
 }
 
 SIMPLE_JWT = {

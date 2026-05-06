@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1050" viewBox="0 0 1600 1050" role="img" aria-labelledby="title desc">
+  <title id="title">System Architecture Diagram for API-Based RAG Knowledge Chatbot</title>
+  <desc id="desc">A layered architecture diagram showing user, frontend, Django REST backend, PostgreSQL, Qdrant, Gemini Embeddings, Groq LLM, PDF and API data sources, and RAG query flow.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f9fc; }
+      .band { fill: #ffffff; stroke: #d9e2ef; stroke-width: 2; }
+      .title { font: 700 34px Arial, sans-serif; fill: #102033; }
+      .subtitle { font: 400 18px Arial, sans-serif; fill: #526171; }
+      .layer-label { font: 700 18px Arial, sans-serif; fill: #24364a; letter-spacing: .3px; }
+      .box-title { font: 700 20px Arial, sans-serif; fill: #102033; }
+      .box-text { font: 400 15px Arial, sans-serif; fill: #526171; }
+      .small { font: 400 13px Arial, sans-serif; fill: #5d6c7b; }
+      .pill { font: 700 13px Arial, sans-serif; fill: #ffffff; }
+      .flow { fill: none; stroke: #2e7dd7; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowBlue); }
+      .flow2 { fill: none; stroke: #14a079; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowGreen); }
+      .flow3 { fill: none; stroke: #8a5bd7; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowPurple); }
+      .dash { stroke-dasharray: 10 8; }
+      .thin { stroke-width: 2.5; }
+      .shadow { filter: url(#shadow); }
+      .frontend { fill: #eaf3ff; stroke: #8abdf4; stroke-width: 2; }
+      .backend { fill: #ecfbf5; stroke: #7bd2b2; stroke-width: 2; }
+      .database { fill: #fff4dc; stroke: #efbd62; stroke-width: 2; }
+      .vector { fill: #f0eaff; stroke: #a88bf0; stroke-width: 2; }
+      .ai { fill: #fff0f4; stroke: #ee90a8; stroke-width: 2; }
+      .source { fill: #f1f5f9; stroke: #a9b8c8; stroke-width: 2; }
+      .user { fill: #102033; }
+      .white { fill: #ffffff; }
+    </style>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2e7dd7"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#14a079"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#8a5bd7"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1050"/>
+
+  <text class="title" x="800" y="58" text-anchor="middle">API-Based RAG Knowledge Chatbot</text>
+  <text class="subtitle" x="800" y="88" text-anchor="middle">Full-Stack Retrieval-Augmented Generation Architecture using Django, Next.js, Gemini Embeddings, Qdrant, PostgreSQL, and Groq LLM</text>
+
+  <rect class="band" x="55" y="125" width="1490" height="160" rx="18"/>
+  <text class="layer-label" x="88" y="158">PRESENTATION LAYER</text>
+
+  <rect class="band" x="55" y="330" width="1490" height="240" rx="18"/>
+  <text class="layer-label" x="88" y="363">BACKEND API AND APPLICATION LAYER</text>
+
+  <rect class="band" x="55" y="615" width="1490" height="190" rx="18"/>
+  <text class="layer-label" x="88" y="648">DATA AND RETRIEVAL LAYER</text>
+
+  <rect class="band" x="55" y="850" width="1490" height="135" rx="18"/>
+  <text class="layer-label" x="88" y="883">EXTERNAL AI AND DATA SERVICES</text>
+
+  <!-- User -->
+  <g class="shadow">
+    <rect class="frontend" x="105" y="180" width="220" height="70" rx="14"/>
+    <circle class="user" cx="145" cy="215" r="18"/>
+    <path class="user" d="M119 248c6-20 45-20 52 0z"/>
+    <text class="box-title" x="190" y="208">User</text>
+    <text class="box-text" x="190" y="232">Student / Admin</text>
+  </g>
+
+  <!-- Frontend -->
+  <g class="shadow">
+    <rect class="frontend" x="440" y="160" width="315" height="105" rx="16"/>
+    <text class="box-title" x="598" y="196" text-anchor="middle">Next.js Frontend</text>
+    <text class="box-text" x="598" y="223" text-anchor="middle">React + TypeScript + Tailwind CSS</text>
+    <text class="small" x="598" y="247" text-anchor="middle">Login, Dashboard, Add Source, Chat UI</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="frontend" x="885" y="160" width="315" height="105" rx="16"/>
+    <text class="box-title" x="1042" y="196" text-anchor="middle">API Client</text>
+    <text class="box-text" x="1042" y="223" text-anchor="middle">HTTPS requests with cookies</text>
+    <text class="small" x="1042" y="247" text-anchor="middle">Handles token refresh and responses</text>
+  </g>
+
+  <!-- Backend modules -->
+  <g class="shadow">
+    <rect class="backend" x="105" y="405" width="245" height="110" rx="16"/>
+    <text class="box-title" x="228" y="440" text-anchor="middle">Accounts API</text>
+    <text class="box-text" x="228" y="467" text-anchor="middle">Email login + Google OAuth</text>
+    <text class="small" x="228" y="491" text-anchor="middle">Cookie JWT authentication</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="backend" x="440" y="405" width="250" height="110" rx="16"/>
+    <text class="box-title" x="565" y="440" text-anchor="middle">Sources API</text>
+    <text class="box-text" x="565" y="467" text-anchor="middle">PDF and API source management</text>
+    <text class="small" x="565" y="491" text-anchor="middle">Status, sync, metadata</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="backend" x="780" y="405" width="260" height="110" rx="16"/>
+    <text class="box-title" x="910" y="440" text-anchor="middle">RAG Service</text>
+    <text class="box-text" x="910" y="467" text-anchor="middle">Chunking, embedding, retrieval</text>
+    <text class="small" x="910" y="491" text-anchor="middle">Prompt construction and orchestration</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="backend" x="1130" y="405" width="260" height="110" rx="16"/>
+    <text class="box-title" x="1260" y="440" text-anchor="middle">Chat API</text>
+    <text class="box-text" x="1260" y="467" text-anchor="middle">Sessions and messages</text>
+    <text class="small" x="1260" y="491" text-anchor="middle">Grounded answer response</text>
+  </g>
+
+  <!-- Data layer -->
+  <g class="shadow">
+    <rect class="database" x="160" y="685" width="280" height="86" rx="16"/>
+    <text class="box-title" x="300" y="720" text-anchor="middle">PostgreSQL</text>
+    <text class="box-text" x="300" y="748" text-anchor="middle">Users, sources, chats, messages</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="vector" x="560" y="685" width="300" height="86" rx="16"/>
+    <text class="box-title" x="710" y="720" text-anchor="middle">Qdrant Vector DB</text>
+    <text class="box-text" x="710" y="748" text-anchor="middle">Embeddings + payload context</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="source" x="980" y="685" width="300" height="86" rx="16"/>
+    <text class="box-title" x="1130" y="720" text-anchor="middle">Uploaded Files</text>
+    <text class="box-text" x="1130" y="748" text-anchor="middle">PDF documents and extracted text</text>
+  </g>
+
+  <!-- External services -->
+  <g class="shadow">
+    <rect class="ai" x="185" y="905" width="285" height="62" rx="16"/>
+    <text class="box-title" x="328" y="932" text-anchor="middle">Gemini Embeddings</text>
+    <text class="small" x="328" y="954" text-anchor="middle">gemini-embedding-001</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="ai" x="590" y="905" width="285" height="62" rx="16"/>
+    <text class="box-title" x="733" y="932" text-anchor="middle">Groq LLM API</text>
+    <text class="small" x="733" y="954" text-anchor="middle">OpenAI-compatible chat completion</text>
+  </g>
+
+  <g class="shadow">
+    <rect class="source" x="995" y="905" width="330" height="62" rx="16"/>
+    <text class="box-title" x="1160" y="932" text-anchor="middle">External REST APIs</text>
+    <text class="small" x="1160" y="954" text-anchor="middle">JSON source data with optional headers</text>
+  </g>
+
+  <!-- Flow arrows -->
+  <path class="flow" d="M325 215 H440"/>
+  <path class="flow" d="M755 213 H885"/>
+  <path class="flow" d="M1042 265 V330"/>
+  <path class="flow" d="M1042 330 C1042 365 910 365 910 405"/>
+  <path class="flow thin" d="M1042 330 C1042 365 1260 365 1260 405"/>
+  <path class="flow thin" d="M1042 330 C1042 365 565 365 565 405"/>
+  <path class="flow thin" d="M1042 330 C1042 365 228 365 228 405"/>
+
+  <path class="flow2" d="M565 515 C565 595 300 595 300 685"/>
+  <path class="flow2" d="M1260 515 C1260 595 300 595 300 685"/>
+  <path class="flow2" d="M565 515 C565 600 1130 600 1130 685"/>
+  <path class="flow2" d="M910 515 V685 H710"/>
+
+  <path class="flow3" d="M910 515 C910 585 328 825 328 905"/>
+  <path class="flow3" d="M328 905 C328 840 710 835 710 771"/>
+  <path class="flow3 dash" d="M910 515 C910 600 733 820 733 905"/>
+  <path class="flow3 dash" d="M1160 905 C1160 830 565 600 565 515"/>
+
+  <!-- Ingestion and query labels -->
+  <rect x="78" y="302" width="220" height="34" rx="17" fill="#2e7dd7"/>
+  <text class="pill" x="188" y="324" text-anchor="middle">1. User actions via browser</text>
+
+  <rect x="382" y="585" width="240" height="34" rx="17" fill="#14a079"/>
+  <text class="pill" x="502" y="607" text-anchor="middle">2. Store metadata and history</text>
+
+  <rect x="735" y="585" width="240" height="34" rx="17" fill="#8a5bd7"/>
+  <text class="pill" x="855" y="607" text-anchor="middle">3. Embed, index, retrieve</text>
+
+  <rect x="1005" y="815" width="300" height="34" rx="17" fill="#6b7788"/>
+  <text class="pill" x="1155" y="837" text-anchor="middle">4. API/PDF content becomes RAG data</text>
+
+  <!-- Mini RAG pipeline -->
+  <g transform="translate(105, 1000)">
+    <text class="small" x="0" y="0">RAG query flow: Question -> Gemini query embedding -> Qdrant semantic search -> Retrieved context -> Groq LLM -> Grounded answer saved in chat history</text>
+  </g>
+</svg>

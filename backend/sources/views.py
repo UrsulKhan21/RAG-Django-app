@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.decorators import throttle_classes
@@ -11,6 +13,10 @@ from .serializers import ApiSourceSerializer
 from .rag_service import ingest_source, get_qdrant_client
 from rag_backend.throttles import SourceWriteRateThrottle
 
+logger = logging.getLogger(__name__)
+GENERIC_INGEST_ERROR = "We could not finish indexing this source. Please try again with a smaller file or retry later."
+GENERIC_DELETE_ERROR = "We could not delete this source right now. Please try again."
+
 
 # =========================================================
 # LIST + CREATE SOURCES
@@ -19,7 +25,6 @@ from rag_backend.throttles import SourceWriteRateThrottle
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
-@throttle_classes([SourceWriteRateThrottle])
 def source_list(request):
     """List all sources or create a new one."""
 
@@ -75,9 +80,10 @@ def source_detail(request, pk):
             if collection_name in collection_names:
                 client.delete_collection(collection_name)
 
-        except Exception as e:
+        except Exception:
+            logger.exception("Failed to delete source %s for user %s", source.id, request.user.id)
             return Response(
-            {"error": f"Failed to delete Qdrant collection: {str(e)}"},
+            {"error": GENERIC_DELETE_ERROR},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -116,9 +122,10 @@ def source_ingest(request, pk):
             status=status.HTTP_200_OK
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to ingest source %s for user %s", source.id, request.user.id)
         return Response(
-            {"error": str(e)},
+            {"error": GENERIC_INGEST_ERROR},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -148,8 +155,9 @@ def source_sync(request, pk):
             status=status.HTTP_200_OK
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to sync source %s for user %s", source.id, request.user.id)
         return Response(
-            {"error": str(e)},
+            {"error": GENERIC_INGEST_ERROR},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

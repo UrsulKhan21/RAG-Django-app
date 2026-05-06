@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: gunicorn rag_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 180
+    startCommand: gunicorn rag_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 600
     healthCheckPath: /admin/login/
     envVars:
       - key: PYTHON_VERSION
@@ -18,4 +18,12 @@ services:
       - key: COOKIE_SECURE
         value: "True"
       - key: COOKIE_SAMESITE
-        value: "Lax"
+        value: "None"
+      - key: DATA_UPLOAD_MAX_MEMORY_SIZE
+        value: "104857600"
+      - key: FILE_UPLOAD_MAX_MEMORY_SIZE
+        value: "104857600"
+      - key: THROTTLE_CHAT_QUERY_RATE
+        value: "120/minute"
+      - key: THROTTLE_SOURCE_WRITE_RATE
+        value: "100/hour"

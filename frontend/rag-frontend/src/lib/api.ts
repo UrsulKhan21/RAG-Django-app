@@ -12,6 +12,25 @@ export class ApiError extends Error {
   }
 }
 
+function getSafeErrorMessage(status: number) {
+  if (status === 400) {
+    return "Please check the form and try again.";
+  }
+  if (status === 401 || status === 403) {
+    return "Your session has expired. Please log in again.";
+  }
+  if (status === 404) {
+    return "We could not find that item.";
+  }
+  if (status === 413) {
+    return "That file is too large. Please upload a smaller file.";
+  }
+  if (status === 429) {
+    return "Too many requests. Please wait a moment and try again.";
+  }
+  return "Something went wrong. Please try again.";
+}
+
 async function refreshAccessToken() {
   const apiUrl = getApiBaseUrl();
 
@@ -62,16 +81,7 @@ export async function apiFetch(
       }
     }
 
-    let message = "API Error";
-
-    try {
-      const data = await res.json();
-      if (typeof data?.detail === "string" && data.detail.trim()) {
-        message = data.detail;
-      } else if (typeof data?.error === "string" && data.error.trim()) {
-        message = data.error;
-      }
-    } catch {}
+    const message = getSafeErrorMessage(res.status);
 
     throw new ApiError(message, res.status);
   }

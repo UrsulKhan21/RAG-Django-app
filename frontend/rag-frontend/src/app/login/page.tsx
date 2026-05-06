@@ -61,7 +61,11 @@ export default function LoginPage() {
         mode === "signup"
           ? "Unable to create account. Please check your details."
           : "Invalid email or password.";
-      setError(err instanceof Error && err.message ? err.message : fallbackMessage);
+      if (err instanceof ApiError && err.status === 429) {
+        setError(err.message);
+      } else {
+        setError(fallbackMessage);
+      }
     } finally {
       setLoading(false);
     }
