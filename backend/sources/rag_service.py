@@ -30,12 +30,20 @@ _last_embed_request_at = 0.0
 def get_embedder() -> Any:
     global _embedder
     if _embedder is None:
-        from google import genai
+        if settings.EMBED_PROVIDER == "sentence_transformers":
+            from sentence_transformers import SentenceTransformer
 
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY is not set.")
+            _embedder = SentenceTransformer(
+                settings.EMBED_MODEL_NAME,
+                device=settings.SENTENCE_TRANSFORMERS_DEVICE,
+            )
+        else:
+            from google import genai
 
-        _embedder = genai.Client(api_key=settings.GEMINI_API_KEY)
+            if not settings.GEMINI_API_KEY:
+                raise ValueError("GEMINI_API_KEY is not set.")
+
+            _embedder = genai.Client(api_key=settings.GEMINI_API_KEY)
     return _embedder
 
 
@@ -74,12 +82,25 @@ def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
     if not texts:
         return []
 
-    from google.genai import types
-
     client = get_embedder()
     vectors: list[list[float]] = []
     batch_size = max(1, settings.EMBED_BATCH_SIZE)
     max_retries = max(1, settings.EMBED_MAX_RETRIES)
+
+    if settings.EMBED_PROVIDER == "sentence_transformers":
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            embeddings = client.encode(
+                batch,
+                batch_size=batch_size,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            vectors.extend(embedding.tolist() for embedding in embeddings)
+        return vectors
+
+    from google.genai import types
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
@@ -182,6 +203,35 @@ def normalize_item(item: dict, index: int) -> dict:
     }
 
 
+def chunk_normalized_record(record: dict, max_chars: int = 1200, overlap: int = 200) -> list[dict]:
+    text = record["text"]
+    if len(text) <= max_chars:
+        return [record]
+
+    chunks = []
+    start = 0
+    chunk_idx = 0
+
+    while start < len(text):
+        end = min(start + max_chars, len(text))
+        chunk_text = text[start:end].strip()
+        if chunk_text:
+            chunk_idx += 1
+            chunk_hash = hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()
+            chunks.append(
+                {
+                    "id": f"{record['id']}_chunk_{chunk_idx}",
+                    "text": chunk_text,
+                    "hash": chunk_hash,
+                }
+            )
+        if end == len(text):
+            break
+        start = max(end - overlap, 0)
+
+    return chunks
+
+
 def normalize_pdf_chunks(pdf_path: str) -> list[dict]:
     reader = PdfReader(pdf_path)
     normalized = []
@@ -239,7 +289,9 @@ def ingest_source(source) -> int:
                 headers=source.headers,
                 data_path=source.data_path,
             )
-            normalized = [normalize_item(item, i) for i, item in enumerate(items)]
+            normalized = []
+            for i, item in enumerate(items):
+                normalized.extend(chunk_normalized_record(normalize_item(item, i)))
 
         if not normalized:
             source.status = "ready"
@@ -247,10 +299,6 @@ def ingest_source(source) -> int:
             source.last_synced = timezone.now()
             source.save()
             return 0
-
-        texts = [obj["text"] for obj in normalized]
-
-        vectors = embed_texts(texts, task_type="RETRIEVAL_DOCUMENT")
 
         client = get_qdrant_client()
         collection_name = source.collection_name
@@ -270,35 +318,34 @@ def ingest_source(source) -> int:
             ),
         )
 
-        ids = [
-            str(uuid5(NAMESPACE_URL, f"{source.id}:{obj['id']}"))
-            for obj in normalized
-        ]
-
-        payloads = [
-            {
-                "text": obj["text"],
-                "source_id": source.id,
-                "source_name": source.name,
-                "source_type": source.source_type,
-                "raw_id": obj["id"],
-                "hash": obj["hash"],
-            }
-            for obj in normalized
-        ]
-
-        points = [
-            PointStruct(id=ids[i], vector=vectors[i], payload=payloads[i])
-            for i in range(len(ids))
-        ]
-
-        batch_size = 100
-        for i in range(0, len(points), batch_size):
-            batch = points[i : i + batch_size]
-            client.upsert(collection_name=collection_name, points=batch)
+        indexed_count = 0
+        batch_size = max(1, settings.EMBED_BATCH_SIZE)
+        for i in range(0, len(normalized), batch_size):
+            batch_records = normalized[i : i + batch_size]
+            batch_vectors = embed_texts(
+                [obj["text"] for obj in batch_records],
+                task_type="RETRIEVAL_DOCUMENT",
+            )
+            points = [
+                PointStruct(
+                    id=str(uuid5(NAMESPACE_URL, f"{source.id}:{obj['id']}")),
+                    vector=batch_vectors[index],
+                    payload={
+                        "text": obj["text"],
+                        "source_id": source.id,
+                        "source_name": source.name,
+                        "source_type": source.source_type,
+                        "raw_id": obj["id"],
+                        "hash": obj["hash"],
+                    },
+                )
+                for index, obj in enumerate(batch_records)
+            ]
+            client.upsert(collection_name=collection_name, points=points)
+            indexed_count += len(batch_records)
 
         source.status = "ready"
-        source.document_count = len(normalized)
+        source.document_count = indexed_count
         source.last_synced = timezone.now()
         source.save()
 

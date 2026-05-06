@@ -184,8 +184,15 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 
-EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "gemini-embedding-001")
-EMBED_DIM = int(os.getenv("EMBED_DIM", "768"))
+EMBED_PROVIDER = os.getenv("EMBED_PROVIDER", "gemini").strip().lower()
+EMBED_MODEL_NAME = os.getenv(
+    "EMBED_MODEL_NAME",
+    "sentence-transformers/all-MiniLM-L6-v2"
+    if EMBED_PROVIDER == "sentence_transformers"
+    else "gemini-embedding-001",
+)
+EMBED_DIM = int(os.getenv("EMBED_DIM", "384" if EMBED_PROVIDER == "sentence_transformers" else "768"))
+SENTENCE_TRANSFORMERS_DEVICE = os.getenv("SENTENCE_TRANSFORMERS_DEVICE", "cpu")
 
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "768"))

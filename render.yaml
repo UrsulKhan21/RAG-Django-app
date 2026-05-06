@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
-    startCommand: gunicorn rag_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 600
+    startCommand: gunicorn rag_backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 600
     healthCheckPath: /admin/login/
     envVars:
       - key: PYTHON_VERSION
@@ -37,6 +37,12 @@ services:
         value: "1200"
       - key: RAG_MAX_TOP_K
         value: "4"
+      - key: EMBED_PROVIDER
+        value: "sentence_transformers"
+      - key: EMBED_MODEL_NAME
+        value: "sentence-transformers/all-MiniLM-L6-v2"
+      - key: EMBED_DIM
+        value: "384"
       - key: EMBED_BATCH_SIZE
         value: "32"
       - key: EMBED_REQUEST_DELAY_SECONDS
