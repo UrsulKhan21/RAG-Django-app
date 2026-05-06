@@ -24,6 +24,7 @@ from pypdf import PdfReader
 # =========================================================
 
 _embedder = None
+_last_embed_request_at = 0.0
 
 
 def get_embedder() -> Any:
@@ -45,6 +46,30 @@ def normalize_vector(values: list[float]) -> list[float]:
     return [value / magnitude for value in values]
 
 
+def get_retry_delay_seconds(exc: Exception, fallback: float) -> float:
+    message = str(exc)
+    retry_delay_match = re.search(r"'retryDelay':\s*'(\d+(?:\.\d+)?)s'", message)
+    if retry_delay_match:
+        return float(retry_delay_match.group(1)) + 1
+
+    retry_in_match = re.search(r"retry in (\d+(?:\.\d+)?)s", message, re.IGNORECASE)
+    if retry_in_match:
+        return float(retry_in_match.group(1)) + 1
+
+    return fallback
+
+
+def wait_for_embed_slot() -> None:
+    global _last_embed_request_at
+
+    delay = max(0, settings.EMBED_REQUEST_DELAY_SECONDS)
+    elapsed = time.monotonic() - _last_embed_request_at
+    if elapsed < delay:
+        time.sleep(delay - elapsed)
+
+    _last_embed_request_at = time.monotonic()
+
+
 def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
     if not texts:
         return []
@@ -54,12 +79,14 @@ def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
     client = get_embedder()
     vectors: list[list[float]] = []
     batch_size = max(1, settings.EMBED_BATCH_SIZE)
+    max_retries = max(1, settings.EMBED_MAX_RETRIES)
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
         response = None
-        for attempt in range(3):
+        for attempt in range(max_retries):
             try:
+                wait_for_embed_slot()
                 response = client.models.embed_content(
                     model=settings.EMBED_MODEL_NAME,
                     contents=batch,
@@ -69,10 +96,11 @@ def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
                     ),
                 )
                 break
-            except Exception:
-                if attempt == 2:
+            except Exception as exc:
+                if attempt == max_retries - 1:
                     raise
-                time.sleep(2 * (attempt + 1))
+                fallback_delay = min(60, 2 * (attempt + 1))
+                time.sleep(get_retry_delay_seconds(exc, fallback_delay))
 
         vectors.extend(
             normalize_vector(list(embedding.values))

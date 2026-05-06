@@ -37,3 +37,9 @@ services:
         value: "1200"
       - key: RAG_MAX_TOP_K
         value: "4"
+      - key: EMBED_BATCH_SIZE
+        value: "32"
+      - key: EMBED_REQUEST_DELAY_SECONDS
+        value: "0.75"
+      - key: EMBED_MAX_RETRIES
+        value: "8"

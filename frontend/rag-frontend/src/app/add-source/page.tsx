@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ApiError, apiFetch } from "@/lib/api";
 import AppHeader from "@/components/app-header";
 
@@ -43,6 +43,35 @@ const ROLE_TEMPLATES = [
   },
 ];
 
+function formatDuration(totalSeconds: number) {
+  const seconds = Math.max(1, Math.round(totalSeconds));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (minutes === 0) {
+    return `${seconds} sec`;
+  }
+
+  if (remainingSeconds === 0) {
+    return `${minutes} min`;
+  }
+
+  return `${minutes} min ${remainingSeconds} sec`;
+}
+
+function getEstimatedIndexSeconds(sourceType: string, pdfFile: File | null) {
+  if (sourceType === "pdf") {
+    if (!pdfFile) {
+      return null;
+    }
+
+    const sizeMb = pdfFile.size / (1024 * 1024);
+    return Math.max(45, Math.ceil(30 + sizeMb * 18));
+  }
+
+  return 75;
+}
+
 export default function AddSourcePage() {
   const [form, setForm] = useState({
     source_type: "api",
@@ -60,15 +89,33 @@ export default function AddSourcePage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const readySources = sources.filter((source) => source.status === "ready");
   const headerChatHref =
     readySources[0] ? `/chat/${readySources[0].id}` : sources[0] ? `/chat/${sources[0].id}` : null;
+  const estimatedSeconds = useMemo(
+    () => getEstimatedIndexSeconds(form.source_type, pdfFile),
+    [form.source_type, pdfFile]
+  );
 
   const csrfToken = getCookie("csrftoken");
 
   useEffect(() => {
     loadSources();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setElapsedSeconds((value) => value + 1);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   async function loadSources() {
     try {
@@ -91,6 +138,7 @@ export default function AddSourcePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setElapsedSeconds(0);
     setMessage("");
     setError("");
 
@@ -131,7 +179,7 @@ export default function AddSourcePage() {
         },
       });
 
-      setMessage("Source created and ingestion started.");
+      setMessage("Source created and indexed successfully.");
       setForm({
         source_type: "api",
         name: "",
@@ -297,6 +345,18 @@ export default function AddSourcePage() {
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 outline-none transition file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-slate-100"
                 required
               />
+            )}
+
+            {estimatedSeconds && (
+              <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+                <p className="font-medium">
+                  Estimated indexing time: about {formatDuration(estimatedSeconds)}
+                </p>
+                <p className="mt-1 text-xs text-sky-200/80">
+                  Large PDFs can take longer when embedding rate limits slow the queue.
+                  {loading ? ` Elapsed: ${formatDuration(elapsedSeconds)}.` : ""}
+                </p>
+              </div>
             )}
 
             <button
